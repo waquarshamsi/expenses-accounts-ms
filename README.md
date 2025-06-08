@@ -53,8 +53,25 @@ The Accounts Microservice is responsible for managing different types of financi
    ```
    docker-compose up -d postgres redis kafka zookeeper
    ```
+4. To store _DB_USERNAME_, _DB_PASSWORD_, and _JWT_SECRET_ in Vault for your accounts-service application, you'll use the path _secret/accounts-service_. **Spring Cloud Vault will automatically look for secrets at secret/<spring.application.name>**.Here's how you can add them using the Vault CLI, assuming you're logged in and Vault is running:
 
-4. Run the application:
+   1.Path: secret/accounts-service <br>
+   2.Keys: DB_USERNAME, DB_PASSWORD, JWT_SECRET 
+
+Vault CLI commands: # Ensure you are logged into Vault:
+```bash
+vault login <your-vault-token> (e.g., dev-token if using dev mode)
+# Store the secrets for accounts-service
+vault kv put secret/accounts-service \
+DB_USERNAME="your_db_username_here" \
+DB_PASSWORD="your_db_password_here" \
+JWT_SECRET="your_jwt_secret_here" 
+```
+Replace "your_db_username_here", "your_db_password_here", and "your_jwt_secret_here" with your actual values.
+After storing these in Vault, your Spring Boot application, configured with spring.cloud.vault.token=\${VAULT_TOKEN} and spring.cloud.vault.kv.enabled=true, should be able to resolve the placeholders \${DB_USERNAME}, \${DB_PASSWORD}, and \${JWT_SECRET} from Vault when it starts. 
+Ensure the VAULT_TOKEN environment variable is correctly set for your application.
+
+5. Run the application:
    ```
    ./mvnw spring-boot:run
    ```

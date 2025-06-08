@@ -7,26 +7,30 @@ services:
     container_name: accounts-service
     restart: always
     ports:
-      - "8080:8080"
+      - "6001:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=dev
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=postgres
-      - VAULT_TOKEN=dev-token
-      - JWT_SECRET=devjwtsecretdevjwtsecretdevjwtsecretdevjwtsecret
+      # DB_USERNAME and DB_PASSWORD will be fetched from Vault
+      # JWT_SECRET will be fetched from Vault
+      - VAULT_TOKEN=dev-token # Token for accounts-service to authenticate with Vault
+      # Updated URIs to use Docker service names
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888,optional:vault://
+      - SPRING_CLOUD_VAULT_URI=http://vault:8200
     depends_on:
       - postgres
       - redis
       - kafka
       - zookeeper
+      - vault
+      - config-server
 
   # PostgreSQL
   postgres:
-    image: postgres:14-alpine
-    container_name: accounts-postgres
+    image: postgres:17.5-bookworm
+    container_name: postgres
     restart: always
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -34,20 +38,20 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-  # Redis
+  # Redis (using your specified version)
   redis:
-    image: redis:alpine
-    container_name: accounts-redis
+    image: redis:8.0.2-alpine
+    container_name: redis-primary
     restart: always
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
 
-  # Zookeeper
+  # Zookeeper (using your specified version)
   zookeeper:
-    image: confluentinc/cp-zookeeper:latest
-    container_name: accounts-zookeeper
+    image: confluentinc/cp-zookeeper:7.9.1
+    container_name: confluent-zookeeper
     restart: always
     ports:
       - "2181:2181"
@@ -55,10 +59,10 @@ services:
       - ZOOKEEPER_CLIENT_PORT=2181
       - ZOOKEEPER_TICK_TIME=2000
 
-  # Kafka
+  # Kafka (using your specified version)
   kafka:
-    image: confluentinc/cp-kafka:latest
-    container_name: accounts-kafka
+    image: confluentinc/cp-kafka:7.9.1
+    container_name: confluent-kafka
     restart: always
     ports:
       - "9092:9092"
@@ -69,10 +73,10 @@ services:
     depends_on:
       - zookeeper
 
-  # Prometheus
+  # Prometheus (using your specified version)
   prometheus:
-    image: prom/prometheus:latest
-    container_name: accounts-prometheus
+    image: prom/prometheus:v3.4.1
+    container_name: prometheus
     restart: always
     ports:
       - "9090:9090"
@@ -80,20 +84,55 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
 
-  # Grafana
+  # Grafana (using your specified version)
   grafana:
-    image: grafana/grafana:latest
-    container_name: accounts-grafana
+    image: grafana/grafana:12.0.1
+    container_name: grafana
     restart: always
     ports:
-      - "3000:3000"
+      - "3080:3000"
     depends_on:
       - prometheus
     volumes:
       - grafana-data:/var/lib/grafana
+
+  # Vault Service
+  vault:
+    image: hashicorp/vault:1.16.2
+    container_name: vault
+    restart: always
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "dev-token" # Sets the root token for dev mode
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200" # Allows connections from other containers
+    cap_add:
+      - IPC_LOCK # Recommended for Vault
+    volumes:
+      - vault-data:/vault/file # For persistence (optional for quick dev, good for longer dev)
+
+  # Spring Cloud Config Server
+  config-server:
+    image: hyness/spring-cloud-config-server:4.2-jdk17
+    container_name: config-server
+    restart: always
+    ports:
+      - "8888:8888"
+    environment:
+      SPRING_PROFILES_ACTIVE: native # Example: using local file system backend
+      # SPRING_CLOUD_CONFIG_SERVER_NATIVE_SEARCH_LOCATIONS: file:/config-repo # If using native profile
+      # For Git backend, you'd use:
+      # SPRING_PROFILES_ACTIVE: git
+      # SPRING_CLOUD_CONFIG_SERVER_GIT_URI: https://github.com/your-username/your-config-repo.git
+    volumes:
+      # Mount a local directory as the config repository if using 'native' profile
+      - ./config-repo:/config-repo # Create a ./config-repo directory next to docker-compose.yml
+    depends_on:
+      - vault # If your config server itself needs to fetch secrets from Vault
 
 volumes:
   postgres-data:
   redis-data:
   prometheus-data:
   grafana-data:
+  vault-data:
